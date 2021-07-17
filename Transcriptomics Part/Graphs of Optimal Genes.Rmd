@@ -1,0 +1,455 @@
+---
+title: "Graphs and Box Plots of The Optimal Genes"
+author: "Basak"
+date: "7/2/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+rm(list = ls())
+library(dplyr)
+library(tibble)
+library(caret)
+library(ggplot2)
+library(mlbench)
+require(caret)
+require(randomForest)
+require(Boruta)
+library(pROC)
+require(ppcor)
+library(qgraph)
+library(ggpubr)
+```
+
+### Reading ranked gene sets 
+```{r}
+# your data
+rank1 = read.csv('top_list1-8.csv', header = TRUE)
+rank2 = read.csv('top_list2-8.csv', header = TRUE)
+rank3 = read.csv('top_list3-8.csv', header = TRUE)
+
+genes = rbind(rank1,rank2,rank3)
+genes = unique(genes$x)
+```
+### Reading data sets
+###### HCCDB3
+
+```{r}
+x.3 = read.csv('DEGS_HCCDB3.csv', row.names = 1, header = TRUE)
+x.3 = t(x.3)
+x.3 = as.data.frame(scale(x.3,center = TRUE, scale = TRUE))
+x.3[1:5,1:5]
+
+sample3_info = read.csv('prepared_sample_info3.csv', header = TRUE) 
+
+head(sample3_info)
+
+```
+###### HCCDB4
+
+```{r}
+x.4 = read.csv('DEGS_HCCDB4.csv', row.names = 1, header = TRUE)
+x.4 = t(x.4)
+x.4 = as.data.frame(scale(x.4,center = TRUE, scale = TRUE))
+x.4[1:5,1:5]
+
+sample4_info = read.csv('prepared_sample_info4.csv', header = TRUE) 
+# head(sample4_info)
+
+```
+###### HCCDB6
+
+```{r}
+x.6 = read.csv('DEGS_HCCDB6.csv', row.names = 1, header = TRUE)
+x.6 = t(x.6)
+x.6 = as.data.frame(scale(x.6,center = TRUE, scale = TRUE))
+x.6[1:5,1:5]
+
+sample6_info = read.csv('prepared_sample_info6.csv', header = TRUE) 
+# head(sample6_info)
+
+```
+
+### Preparing data sets
+```{r}
+data3 = x.3 %>% 
+  rownames_to_column(var = "Samples") %>%
+  left_join(sample3_info %>% dplyr::select(Samples, TYPE), by = "Samples") %>%
+  column_to_rownames(var = "Samples") %>%
+  dplyr::select(TYPE, genes)
+# data3[1:5,1:5]
+```
+
+```{r}
+data4 = as.data.frame(x.4) %>% 
+  rownames_to_column(var = "Samples") %>%
+  left_join(sample4_info %>% dplyr::select(Samples,TYPE), by = "Samples") %>%
+  column_to_rownames(var = "Samples") %>%
+  dplyr::select(TYPE,genes)
+# data4[1:5,1:5]
+```
+
+```{r}
+data6 = as.data.frame(x.6) %>% 
+  rownames_to_column(var = "Samples") %>%
+  left_join(sample6_info %>% dplyr::select(Samples,TYPE), by = "Samples") %>%
+  column_to_rownames(var = "Samples") %>%
+  dplyr::select(TYPE,genes)
+# data6[1:5,1:5]
+```
+
+## HCCDB3
+#### Adjacent sample correlations
+###### By using cor_auto with pcor in qgraph package
+```{r}
+adj.data3 = data3 %>% filter(TYPE=='Adjacent') %>% dplyr::select(-TYPE)
+adj.pcor3 = cor_auto(adj.data3)
+pdf(file = "Partial Correlation Graph - HCCDB3 - Adjacent.pdf",
+    width = 11, # The width of the plot in inches
+    height = 8.5) 
+graph_adj.pcor3 <- qgraph(adj.pcor3, graph = "pcor", layout = "spring", threshold = "BH",
+                     sampleSize = nrow(adj.data3), alpha = 0.05, 
+                     labels = colnames(adj.pcor3),
+                     label.cex = 1.2,
+                     vsize = 8,
+                     label.font = 2
+                     # title = 'HCCDB3 - Adjacent Sample Gene Network'
+                     )
+dev.off()
+
+```
+
+
+
+#### HCC sample correlations
+###### By using cor_auto with pcor in qgraph package
+```{r}
+hcc.data3 = data3 %>% filter(TYPE=='HCC') %>% dplyr::select(-TYPE)
+hcc.pcor3 = cor_auto(hcc.data3)
+pdf(file = "Partial Correlation Graph - HCCDB3 - HCC.pdf",
+    width = 11, # The width of the plot in inches
+    height = 8.5) 
+graph_hcc.pcor3 <- qgraph(hcc.pcor3, graph = "pcor", layout = "spring", threshold = "BH",
+                     sampleSize = nrow(hcc.data3), alpha = 0.05, 
+                     labels = colnames(hcc.pcor3),
+                     label.cex = 1.2,
+                     vsize = 8,
+                     label.font = 2
+                     # title = 'HCCDB3 - HCC Sample Gene Network'
+                     )
+dev.off()
+```
+
+```{r}
+######## This Code chunk to obtain the number of connections that each gene has.########
+#  Number of edges of genes (Adjacent)
+# Genes are stored as Numbers but qgraph converts them internally by input from user --> colnames(adj.pcor3)
+# This code uses this knowledge to convert numbes to node names since Edgelist varible is stores as numbers 
+# before converted into gene names.
+# This code gets number of edges for each gene
+connections.adj = as.data.frame(sort(table(c(graph_adj.pcor3$Edgelist$from, graph_adj.pcor3$Edgelist$to)), decreasing = TRUE))
+Var1 = 1:length(colnames(adj.pcor3))
+names.adj = as.data.frame(Var1) %>% mutate(Genes.adj = c(colnames(adj.pcor3))) %>% mutate(Var1 = as.factor(Var1))
+connections.adj = connections.adj %>% left_join(names.adj, by = 'Var1')
+connections.adj
+
+#  Number of edges of genes (HCC)
+connections.hcc = as.data.frame(sort(table(c(graph_hcc.pcor3$Edgelist$from, graph_hcc.pcor3$Edgelist$to)), decreasing = TRUE))
+Var1 = 1:length(colnames(hcc.pcor3))
+names.hcc = as.data.frame(Var1) %>% mutate(Genes.hcc = c(colnames(hcc.pcor3))) %>% mutate(Var1 = as.factor(Var1))
+connections.hcc = connections.hcc %>% left_join(names.hcc, by = 'Var1')
+connections.hcc
+
+connections = connections.adj %>% left_join(connections.hcc, by = c('Var1')) 
+# As it can be seen Genes.hcc and Genes.adj are same and have same Var1 name (sanity check)
+connections = connections %>% mutate(difference = Freq.x - Freq.y)
+connections %>% arrange(desc(difference))
+```
+
+
+
+#### Box-Plots of Genes
+```{r}
+# Specify the comparisons you want
+my_comparisons <- list( c("Adjacent", "HCC") )
+
+ for(i in 2:23) { 
+  nam <- paste("g", i, sep = "")
+  y = colnames(data3)[i]
+  assign(nam, ggboxplot(data3,x = 'TYPE', y = y,color = 'TYPE',
+                        palette =c("#FC4E07","#00AFBB","#FC4E07"),shape = 'TYPE') + 
+                        stat_compare_means(label.x = 1.2, label.y = NULL) )
+ }
+```
+
+###### Down Regulated
+```{r}
+pdf(file = "Down Regulated-HCCDB3_1.pdf",
+    width = 11, # The width of the plot in inches
+    height = 8.5)
+# For data 3
+ggarrange(g3, g4, g5, g6, g7 , g9, heights = c(20, 20),
+             ncol = 3, nrow = 2, labels = c("A","B", "C","D","E","F"))
+dev.off()
+
+pdf(file = "Down Regulated-HCCDB3_2.pdf",
+    width = 11, # The width of the plot in inches
+    height = 8.5)
+ggarrange( g10, g11, g13, g14, g15, g16, heights = c(10, 10),
+             ncol = 3, nrow = 2, labels = c("A","B", "C","D","E","F"))
+dev.off()
+
+pdf(file = "Down Regulated-HCCDB3_3.pdf",
+    width = 11, # The width of the plot in inches
+    height = 8.5)
+ggarrange(g17,g18,g19, g21, g22,g12, heights = c(10, 10),
+             ncol = 3, nrow = 2, labels = c("A","B", "C","D","E","F"))
+dev.off()
+```
+
+
+###### Up Regulated
+```{r}
+pdf(file = "Up Regulated-HCCDB3.pdf",
+    width = 11, # The width of the plot in inches
+    height = 8.5)
+ggarrange(g2, g8, g20, g23, heights = c(10, 10),
+          ncol = 2, nrow = 2, labels = c("A","B", "C","D"))
+dev.off()
+```
+
+## HCCDB4
+#### Adjacent sample correlations
+###### By using cor_auto with pcor in qgraph package
+```{r}
+adj.data4 = data4 %>% filter(TYPE=='Adjacent') %>% dplyr::select(-TYPE)
+adj.pcor4 = cor_auto(adj.data4)
+pdf(file = "Partial Correlation Graph - HCCDB4 - Adjacent.pdf",
+    width = 11, # The width of the plot in inches
+    height = 8.5) 
+graph_adj.pcor4 <- qgraph(adj.pcor4, graph = "pcor", layout = "spring", threshold = "BH",
+                     sampleSize = nrow(adj.data4), alpha = 0.05, 
+                     labels = colnames(adj.pcor4),
+                     label.cex = 1.2,
+                     vsize = 8,
+                     label.font = 2
+                     # title = 'HCCDB4 - Adjacent Sample Gene Network'
+                     )
+dev.off()
+```
+
+
+
+#### HCC sample correlations
+###### By using cor_auto with pcor in qgraph package
+```{r}
+hcc.data4 = data4 %>% filter(TYPE=='HCC') %>% dplyr::select(-TYPE)
+hcc.pcor4 = cor_auto(hcc.data4)
+pdf(file = "Partial Correlation Graph - HCCDB4 - HCC.pdf",
+    width = 11, # The width of the plot in inches
+    height = 8.5) 
+graph_hcc.pcor4 <- qgraph(hcc.pcor4, graph = "pcor", layout = "spring", threshold = "BH",
+                     sampleSize = nrow(hcc.data4), alpha = 0.05, 
+                     labels = colnames(hcc.pcor4),
+                     label.cex = 1.2,
+                     vsize = 8,
+                     label.font = 2
+                     # title = 'HCCDB4 - HCC Sample Gene Network'
+                     )
+dev.off()
+```
+```{r}
+
+# Number of edges of genes (Adjacent)
+# Genes are stored as Numbers but qgraph converts them internally by input from user --> colnames(adj.pcor3)
+# This code uses this knowledge to convert numbes to node names since Edgelist varible is stores as numbers before converted into gene names.
+# This code gets number of edges for each gene
+connections.adj = as.data.frame(sort(table(c(graph_adj.pcor4$Edgelist$from, graph_adj.pcor4$Edgelist$to)), decreasing = TRUE))
+Var1 = 1:length(colnames(adj.pcor4))
+names.adj = as.data.frame(Var1) %>% mutate(Genes.adj = c(colnames(adj.pcor4))) %>% mutate(Var1 = as.factor(Var1))
+connections.adj = connections.adj %>% left_join(names.adj, by = 'Var1')
+connections.adj
+
+#  Number of edges of genes (HCC)
+connections.hcc = as.data.frame(sort(table(c(graph_hcc.pcor4$Edgelist$from, graph_hcc.pcor4$Edgelist$to)), decreasing = TRUE))
+Var1 = 1:length(colnames(hcc.pcor4))
+names.hcc = as.data.frame(Var1) %>% mutate(Genes.hcc = c(colnames(hcc.pcor4))) %>% mutate(Var1 = as.factor(Var1))
+connections.hcc = connections.hcc %>% left_join(names.hcc, by = 'Var1')
+connections.hcc
+
+connections = connections.adj %>% left_join(connections.hcc, by = c('Var1')) 
+# As it can be seen Genes.hcc and Genes.adj are same and have same Var1 name (sanity check)
+connections = connections %>% mutate(difference = Freq.x - Freq.y)
+connections %>% arrange(desc(difference))
+```
+
+
+#### Box-Plots of Genes
+```{r}
+# Specify the comparisons you want
+my_comparisons <- list( c("Adjacent", "HCC") )
+
+ for(i in 2:23) { 
+  nam <- paste("g", i, sep = "")
+  y = colnames(data4)[i]
+  assign(nam, ggboxplot(data4,x = 'TYPE', y = y,color = 'TYPE',
+                        palette =c("#FC4E07","#00AFBB","#FC4E07"),shape = 'TYPE') + 
+                        stat_compare_means(label.x = 1.2, label.y = NULL) )
+ }
+```
+
+###### Down Regulated
+```{r}
+
+# For data 4
+pdf(file = "Down Regulated-HCCDB4_1.pdf",
+    width = 11, # The width of the plot in inches
+    height = 8.5)
+ggarrange(g3, g4, g5, g6, g7 , g9, heights = c(20, 20),
+             ncol = 3, nrow = 2, labels = c("A","B", "C","D","E","F"))
+dev.off()
+
+pdf(file = "Down Regulated-HCCDB4_2.pdf",
+    width = 11, # The width of the plot in inches
+    height = 8.5)
+ggarrange( g10, g11, g13, g14, g15, g16, heights = c(10, 10),
+             ncol = 3, nrow = 2, labels = c("A","B", "C","D","E","F"))
+dev.off()
+
+pdf(file = "Down Regulated-HCCDB4_3.pdf",
+    width = 11, # The width of the plot in inches
+    height = 8.5)
+ggarrange(g17,g18,g19, g21, g22,g12, heights = c(10, 10),
+             ncol = 3, nrow = 2, labels = c("A","B", "C","D","E","F"))
+dev.off()
+```
+
+
+###### Up Regulated
+```{r}
+pdf(file = "Up Regulated-HCCDB4.pdf",
+    width = 11, # The width of the plot in inches
+    height = 8.5)
+ggarrange(g2, g8, g20, g23, heights = c(10, 10),
+          ncol = 2, nrow = 2, labels = c("A","B", "C","D"))
+dev.off()
+```
+
+
+
+## HCCDB6
+#### Adjacent sample correlations
+###### By using cor_auto with pcor in qgraph package
+```{r}
+adj.data6 = data6 %>% filter(TYPE=='Adjacent') %>% dplyr::select(-TYPE)
+adj.pcor6 = cor_auto(adj.data6)
+pdf(file = "Partial Correlation Graph - HCCDB6 - Adjacent.pdf",
+    width = 11, # The width of the plot in inches
+    height = 8.5) 
+graph_adj.pcor6 <- qgraph(adj.pcor6, graph = "pcor", layout = "spring", threshold = "BH",
+                     sampleSize = nrow(adj.data6), alpha = 0.05, 
+                     labels = colnames(adj.pcor6),
+                     label.cex = 1.2,
+                     vsize = 8,
+                     label.font = 2
+                     # title = 'HCCDB6 - Adjacent Sample Gene Network'
+                     )
+dev.off()
+```
+
+
+#### HCC sample correlations
+###### By using cor_auto with pcor in qgraph package
+```{r}
+hcc.data6 = data6 %>% filter(TYPE=='HCC') %>% dplyr::select(-TYPE)
+hcc.pcor6 = cor_auto(hcc.data6)
+pdf(file = "Partial Correlation Graph - HCCDB6 - HCC.pdf",
+    width = 11, # The width of the plot in inches
+    height = 8.5) 
+graph_hcc.pcor6 <- qgraph(hcc.pcor6, graph = "pcor", layout = "spring", threshold = "BH",
+                     sampleSize = nrow(hcc.data6), alpha = 0.05, 
+                     labels = colnames(hcc.pcor6),
+                     label.cex = 1.2,
+                     vsize = 8,
+                     label.font = 2
+                     # title = 'HCCDB6 - HCC Sample Gene Network'
+                     )
+dev.off()
+```
+```{r}
+
+#  Number of edges of genes (Adjacent)
+# Genes are stored as Numbers but qgraph converts them internally by input from user --> colnames(adj.pcor3)
+# This code uses this knowledge to convert numbes to node names since Edgelist varible is stores as numbers before converted into gene names.
+# This code gets number of edges for each gene
+connections.adj = as.data.frame(sort(table(c(graph_adj.pcor6$Edgelist$from, graph_adj.pcor6$Edgelist$to)), decreasing = TRUE))
+Var1 = 1:length(colnames(adj.pcor6))
+names.adj = as.data.frame(Var1) %>% mutate(Genes.adj = c(colnames(adj.pcor6))) %>% mutate(Var1 = as.factor(Var1))
+connections.adj = connections.adj %>% left_join(names.adj, by = 'Var1')
+connections.adj
+
+#  Number of edges of genes (HCC)
+connections.hcc = as.data.frame(sort(table(c(graph_hcc.pcor6$Edgelist$from, graph_hcc.pcor6$Edgelist$to)), decreasing = TRUE))
+Var1 = 1:length(colnames(hcc.pcor6))
+names.hcc = as.data.frame(Var1) %>% mutate(Genes.hcc = c(colnames(hcc.pcor6))) %>% mutate(Var1 = as.factor(Var1))
+connections.hcc = connections.hcc %>% left_join(names.hcc, by = 'Var1')
+connections.hcc
+
+connections = connections.adj %>% left_join(connections.hcc, by = c('Var1')) 
+# As it can be seen Genes.hcc and Genes.adj are same and have same Var1 name (sanity check)
+connections = connections %>% mutate(difference = Freq.x - Freq.y)
+connections %>% arrange(desc(difference))
+```
+
+#### Box-Plots of Genes
+```{r}
+# Specify the comparisons you want
+my_comparisons <- list( c("Adjacent", "HCC") )
+
+ for(i in 2:23) { 
+  nam <- paste("g", i, sep = "")
+  y = colnames(data6)[i]
+  assign(nam, ggboxplot(data6, x = 'TYPE', y = y, color = 'TYPE',
+                        palette =c("#FC4E07","#00AFBB","#FC4E07"),shape = 'TYPE') + 
+                        stat_compare_means(label.x = 1.2, label.y = NULL) )
+ }
+```
+
+###### Down Regulated
+```{r}
+
+# For data 6
+pdf(file = "Down Regulated-HCCDB6_1.pdf",
+    width = 11, # The width of the plot in inches
+    height = 8.5)
+ggarrange(g3, g4, g5, g6, g7 , g9, heights = c(20, 20),
+             ncol = 3, nrow = 2, labels = c("A","B", "C","D","E","F"))
+dev.off()
+
+pdf(file = "Down Regulated-HCCDB6_2.pdf",
+    width = 11, # The width of the plot in inches
+    height = 8.5)
+ggarrange( g10, g11, g13, g14, g15, g16, heights = c(10, 10),
+             ncol = 3, nrow = 2, labels = c("A","B", "C","D","E","F"))
+dev.off()
+
+pdf(file = "Down Regulated-HCCDB6_3.pdf",
+    width = 11, # The width of the plot in inches
+    height = 8.5)
+ggarrange(g17,g18,g19, g21, g22,g12, heights = c(10, 10),
+             ncol = 3, nrow = 2, labels = c("A","B", "C","D","E","F"))
+dev.off()
+```
+
+
+###### Up Regulated
+```{r}
+pdf(file = "Up Regulated-HCCDB6.pdf",
+    width = 11, # The width of the plot in inches
+    height = 8.5)
+ggarrange(g2, g8, g20, g23, heights = c(10, 10),
+          ncol = 2, nrow = 2, labels = c("A","B", "C","D"))
+dev.off()
+```
+
+

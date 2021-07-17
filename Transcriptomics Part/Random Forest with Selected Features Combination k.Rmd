@@ -1,0 +1,550 @@
+---
+title: "Random Forest with Selected Features Combination 3"
+author: "Basak"
+date: "6/30/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+rm(list = ls())
+library(dplyr)
+library(tibble)
+library(caret)
+library(ggplot2)
+library(mlbench)
+require(caret)
+require(randomForest)
+require(Boruta)
+library(pROC)
+```
+### Reading data sets 
+```{r}
+rank3 = read.csv('new_boruta_ranking_data3.csv', row.names = 1, header = TRUE)
+rank6 = read.csv('new_boruta_ranking_data6.csv', row.names = 1, header = TRUE)
+
+# filtering confirmed Boruta selected features
+rank3 = rank3 %>% 
+  rownames_to_column('genes') %>%
+  filter(decision %in% c("Confirmed"))
+
+# Some genes dont exist in datasets 4, therefore filtered.
+rank3 = rank3 %>%
+  filter(!(genes %in% c('CDO1', 'CRHBP', 'CD5L','AKR1C4','ABCA8', 'ITIH4', "C1RL", "CFP",  'HAGH', 'MT1HL1',
+                        'CD302', 'GNE', 'CLEC4M', 'HMGCS2', 'SLC2A2', 'ABCA6','CXCL14', 'CYP4F2', 'F11',
+                        'SLC17A2', 'NELFE', 'SERPING1', 'C1R', 'SLCO1B1', 'ECHDC2', 'MSRA', 'CPN1' )))
+
+rank6 = rank6 %>% 
+  rownames_to_column('genes') %>%
+  filter(decision %in% c("Confirmed"))
+
+# `CDO1`, `CRHBP`, `CD5L`, `AKR1C4`, `ABCA8` common genes of rank 3 and rank 6 does not exist in rank 4
+rank6 = rank6 %>%
+  filter(!(genes %in% c('CDO1', 'CRHBP', 'CD5L','AKR1C4','ABCA8', 'ITIH4', "C1RL", "CFP",  'HAGH', 'MT1HL1',
+                        'CD302', 'GNE', 'CLEC4M', 'HMGCS2', 'SLC2A2', 'ABCA6','CXCL14', 'CYP4F2', 'F11',
+                        'SLC17A2', 'NELFE', 'SERPING1', 'C1R', 'SLCO1B1', 'ECHDC2', 'MSRA', 'CPN1' )))
+
+rank3[1:5,]
+
+```
+
+## Getting common features from ranked dataframes. 
+
+#### Here, "common.ranking.3" has common genes with their ranking in HCCDB3 dataset and "common.ranking.6" has common genes with their ranking in HCCDB6 dataset. Common genes are ranked with different orders for HCCDB3 data and HCCDB6 data. Below codes checks these two dataframes iteratively and selects top 2, 4, 8, and all 16 genes considering both datasets.
+
+```{r}
+
+common = rank3[which(rank3$genes %in% rank6$genes),]
+
+top=c()
+top_list = list()
+
+for (i in 1:dim(rank3)[1]){
+  r3 = rank3[1:i,]
+  r6 = rank6[1:i,]
+  top = r6[which(r6$genes %in% r3$genes),"genes"]
+  j = 1
+  while ( 2^j <= dim(rank3)[1]){
+    if (length(top) == 2^j) {
+      name <- paste("top", 2^j, sep = "")
+      assign(name, top)
+      # cat("Top",2^j, "genes: ", top, '\n') # printing & checking each iteration
+      top_list[[name]] <- top
+    }
+    j = j+1
+  }
+  # to add all common genes to the top list
+  if (length(top) == dim(common)[1]){ 
+      name <- paste("top", dim(common)[1], sep = "")
+      assign(name, top)
+      top_list[[name]] <- top
+  }
+}
+ 
+top_list
+write.csv( top_list$top8, "top_list2-8.csv", quote = F,row.names = F)
+```
+
+
+## Random Forest 
+### Train: HCCDB6 Data (Train set)
+### Test: HCCDB6 Data (Test set), HCCDB3 Data (Test set) 
+### Validatation: HCCDB4 Data
+##### Note: While using HCCDB3 as test set, only the part which is not used for Baruto Feature Selection is used. This condition is satisfied with set.seed () function for all data sets used.
+
+
+#### Reading HCCDB3 data sets (Test set)
+```{r}
+x.3 = read.csv('DEGS_HCCDB3.csv', row.names = 1, header = TRUE)
+x.3 = as.data.frame(t(x.3))
+
+sample3_info = read.csv('prepared_sample_info3.csv', header = TRUE) 
+
+head(sample3_info)
+x.3[1:5,1:5]
+```
+### Scaling data (Data is already log2 transformed)
+```{r}
+x.3 = scale(x.3,center = TRUE, scale = TRUE)
+x.3[1:5,1:5]
+```
+### Preparing data sets to split into test and train. Type varible (dependent variable) is added to the data as a factor.
+```{r}
+data3 = as.data.frame(x.3) %>% 
+  rownames_to_column(var = "Samples") %>%
+  left_join(sample3_info %>% select(Samples,TYPE), by = "Samples") %>%
+  mutate(TYPE = as.factor(TYPE)) %>%
+  column_to_rownames(var = "Samples")
+```
+
+### Generating a stratified random split of the data. 
+```{r}
+set.seed(11) # Always same train and test split will be used in the analysis
+train3.Index <- createDataPartition(data3$TYPE, p = .7,
+                                  list = FALSE,
+                                  times = 1)
+data3.train <- data3[train3.Index,]
+test3 <- data3[-train3.Index,]
+table(test3$TYPE)
+table(data3.train$TYPE)
+
+```
+
+### Reading HCCDB6 data sets (Train Set)
+```{r}
+x.6 = read.csv('DEGS_HCCDB6.csv', row.names = 1, header = TRUE)
+x.6 = as.data.frame(t(x.6))
+
+sample6_info = read.csv('prepared_sample_info6.csv', header = TRUE) 
+
+head(sample6_info)
+x.6[1:5,1:5]
+```
+### Scaling data (Data is already log2 transformed)
+```{r}
+x.6 = scale(x.6,center = TRUE, scale = TRUE)
+x.6[1:5,1:5]
+```
+### Preparing data sets to split into test and train. Type varible is added to the data as a factor.
+```{r}
+data6 = as.data.frame(x.6) %>% 
+  rownames_to_column(var = "Samples") %>%
+  left_join(sample6_info %>% select(Samples,TYPE), by = "Samples") %>%
+  mutate(TYPE = as.factor(TYPE)) %>%
+  column_to_rownames(var = "Samples")
+```
+
+### Generating a stratified random split of the data
+```{r}
+set.seed(11) # Always same train and test split will be used in the analysis
+train6.Index <- createDataPartition(data6$TYPE, p = .7,
+                                  list = FALSE,
+                                  times = 1)
+data6.train <- data6[train6.Index,]
+test6 <- data6[-train6.Index,]
+table(test6$TYPE)
+table(data6.train$TYPE)
+```
+```{r}
+
+```
+### Reading HCCDB4 data sets (Validation Set)
+```{r}
+x.4 = read.csv('DEGS_HCCDB4.csv', row.names = 1, header = TRUE)
+x.4 = as.data.frame(t(x.4))
+
+sample4_info = read.csv('prepared_sample_info4.csv', header = TRUE) 
+
+head(sample4_info)
+x.4[1:5,1:5]
+```
+
+### Scaling data (Data is already log2 transformed)
+```{r}
+x.4 = scale(x.4, center = TRUE, scale = TRUE)
+x.4[1:5,1:5]
+```
+
+### Preparing data sets to split into test and train. Type varible is added to the data as a factor.
+```{r}
+validation.4 = as.data.frame(x.4) %>% 
+  rownames_to_column(var = "Samples") %>%
+  left_join(sample4_info %>% select(Samples,TYPE), by = "Samples") %>%
+  mutate(TYPE = as.factor(TYPE)) %>%
+  column_to_rownames(var = "Samples")
+```
+
+```{r}
+# A list that contains a number of custom named elements that the caret package looks for, such as how to fit and how to predict. 
+# Define a custom RF (Classification) method to allow optimisation of ntree parameter as well as mtry.
+customRF <- list(type = "Classification", library = "randomForest", loop = NULL)
+customRF$parameters <- data.frame(parameter = c("mtry", "ntree"), 
+                                  class = rep("numeric", 2), label = c("mtry", "ntree"))
+customRF$grid <- function(x, y, len = NULL, search = "grid") {}
+customRF$fit <- function(x, y, wts, param, lev, last, weights, ...) {
+  randomForest(x, y, mtry = param$mtry, ntree=param$ntree, ...)
+}
+customRF$predict <- function(modelFit, newdata, preProc = NULL, submodels = NULL)
+  predict(modelFit, newdata)
+customRF$prob <- function(modelFit, newdata, preProc = NULL, submodels = NULL)
+  predict(modelFit, newdata, type = "prob")
+customRF$sort <- function(x) x[order(x[,1]),]
+customRF$levels <- function(x) x$classes
+
+# train model
+control <- trainControl(method="repeatedcv", number=10, repeats=10, classProbs = TRUE)
+```
+
+### Random Forest with top 2 genes 
+```{r}
+
+data6.train.top2 = data6.train %>%
+  select(TYPE,top_list[["top2"]])
+
+# Define values for mtry and ntree to explore. 
+# For mtry assess 1 and 2 (since there are 2 genes)
+tunegrid <- expand.grid(.mtry=c(1,2), 
+                        .ntree=c(1000, 1500, 2000, 2500, 3000, 3500))
+custom.top2 <- train(TYPE~., data=data6.train.top2, 
+                 method=customRF, 
+                 metric='Accuracy', 
+                 tuneGrid=tunegrid, 
+                 trControl=control, 
+                 verbose=T) 
+plot(custom.top2)
+
+```
+
+
+### Fitting the best model on train set 6, then predicting on test 6, test 3 and validation set 4
+```{r}
+tunegrid <- expand.grid(.mtry = 1, .ntree =2000)
+custom.top2 <- train(TYPE~., data=data6.train.top2, 
+                 method=customRF, 
+                 metric='Accuracy', 
+                 tuneGrid=tunegrid, 
+                 trControl=control, 
+                 verbose=T) 
+# Prepare Test sets and Validation set for top 2 genes
+test3.top2 = test3 %>%
+  select(TYPE,top_list[["top2"]])
+test6.top2 = test6 %>%
+  select(TYPE,top_list[["top2"]])
+validation.4.top2 = validation.4 %>%
+  select(TYPE,top_list[["top2"]])
+
+prediction3 = predict(custom.top2,test3.top2,'prob')
+prediction6 = predict(custom.top2,test6.top2,'prob')
+prediction4 = predict(custom.top2,validation.4.top2,'prob')
+```
+
+```{r}
+pdf(file = "Combination 2 - ROC Curves for 2 Genes.pdf",   # The directory you want to save the file in
+    width = 11, # The width of the plot in inches
+    height = 8.5) # The height of the plot in inches
+
+par(pty="s") 
+lrROC <- roc(test6.top2$TYPE ~ prediction6$HCC,plot=TRUE,
+             print.auc=T,print.auc.x = 0.9,print.auc.y = 0.75,
+             col="red",
+             lwd =1.5,legacy.axes=TRUE,main="ROC Curves for 2 Genes")
+lrROC <- roc(test3.top2$TYPE ~ prediction3$HCC,add = TRUE,plot=TRUE,
+             print.auc=T,print.auc.x = 0.4,print.auc.y = 0.93,
+             col="orange",
+             lwd =1.5,legacy.axes=TRUE)
+lrROC <- roc(validation.4.top2$TYPE ~ prediction4$HCC,add = TRUE,plot=TRUE,
+             print.auc=T,print.auc.x = 0.9,print.auc.y = 0.45,
+             col="blue",
+             lwd =1.5,legacy.axes=TRUE)
+legend("bottomright",cex = 0.65,xjust = 1,legend=c('HCCDB6 Test set','HCCDB3 Test set','HCCDB4 Validation Set',
+                                                   "mtry = 1","ntree = 2000"),
+       col=c('red','orange','blue','black','black'),lwd=1)
+dev.off()
+
+```
+
+
+### Random Forest with top 4 genes 
+```{r}
+data6.train.top4 = data6.train %>%
+  select(TYPE,top_list[["top4"]])
+mtry <- sqrt(ncol(data6.train.top4)-1)
+# Define values for mtry and ntree to explore. 
+# For mtry assess 50%, 100%, and 150% of the default value.
+tunegrid <- expand.grid(.mtry=c(round(0.5*mtry),round(mtry),round(1.5*mtry)), 
+                        .ntree=c(1000, 1500, 2000, 2500, 3000))
+custom.top4 <- train(TYPE~., data=data6.train.top4, 
+                 method=customRF, 
+                 metric='Accuracy', 
+                 tuneGrid=tunegrid, 
+                 trControl=control, 
+                 verbose=T) 
+plot(custom.top4)
+```
+
+### Fitting the best model on train set 6, then predicting on test 6, test 3 and validation set 4
+```{r}
+tunegrid <- expand.grid(.mtry = round(mtry), .ntree =2500)
+custom.top4 <- train(TYPE~., data=data6.train.top4, 
+                 method=customRF, 
+                 metric='Accuracy', 
+                 tuneGrid=tunegrid, 
+                 trControl=control, 
+                 verbose=T) 
+# Prepare Test sets and Validation set for top 4 genes
+test6.top4 = test6 %>%
+  select(TYPE,top_list[["top4"]])
+test3.top4 = test3 %>%
+  select(TYPE,top_list[["top4"]])
+validation.4.top4 = validation.4 %>%
+  select(TYPE,top_list[["top4"]])
+prediction3 = predict(custom.top4,test3.top4,'prob')
+prediction6 = predict(custom.top4,test6.top4,'prob')
+prediction4 = predict(custom.top4,validation.4.top4,'prob')
+
+
+```
+
+```{r}
+pdf(file = "Combination 2 - ROC Curves for 4 Genes.pdf",   # The directory you want to save the file in
+    width = 11, # The width of the plot in inches
+    height = 8.5) # The height of the plot in inches
+
+par(pty="s") 
+lrROC <- roc(test6.top4$TYPE ~ prediction6$HCC,plot=TRUE,
+             print.auc=T,print.auc.x = 0.9,print.auc.y = 0.75,
+             col="red",
+             lwd =1.5,legacy.axes=TRUE,main="ROC Curves for 4 Genes")
+lrROC <- roc(test3.top4$TYPE ~ prediction3$HCC,add = TRUE,plot=TRUE,
+             print.auc=T,print.auc.x = 0.4,print.auc.y = 0.93,
+             col="orange",
+             lwd =1.5,legacy.axes=TRUE)
+lrROC <- roc(validation.4.top4$TYPE ~ prediction4$HCC,add = TRUE,plot=TRUE,
+             print.auc=T,print.auc.x = 0.9,print.auc.y = 0.45,
+             col="blue",
+             lwd =1.5,legacy.axes=TRUE)
+legend("bottomright",cex = 0.65,xjust = 1,legend=c('HCCDB6 Test set','HCCDB3 Test set','HCCDB4 Validation Set',
+                                                   "mtry = 2","ntree = 2500"),
+       col=c('red','orange','blue','black','black'),lwd=1)
+dev.off()
+
+```
+
+### Random Forest with top 8 genes 
+```{r}
+data6.train.top8 = data6.train %>%
+  select(TYPE,top_list[["top8"]])
+mtry <- sqrt(ncol(data6.train.top8)-1)
+# Define values for mtry and ntree to explore. 
+# For mtry assess 50%, 100%, and 150% of the default value.
+tunegrid <- expand.grid(.mtry=c(round(0.5*mtry),round(mtry),round(1.5*mtry)), 
+                        .ntree=c(1000, 1500, 2000, 2500, 3000))
+custom.top8 <- train(TYPE~., data=data6.train.top8, 
+                 method=customRF, 
+                 metric='Accuracy', 
+                 tuneGrid=tunegrid, 
+                 trControl=control, 
+                 verbose=T) 
+plot(custom.top8)
+```
+
+### Fitting the best model on train set 6, then predicting on test 6, test 3 and validation set 4
+```{r}
+tunegrid <- expand.grid(.mtry = round(mtry), .ntree =1000)
+custom.top8 <- train(TYPE~., data=data6.train.top8, 
+                 method=customRF, 
+                 metric='Accuracy', 
+                 tuneGrid=tunegrid, 
+                 trControl=control, 
+                 verbose=T) 
+# Prepare Test sets and Validation set for top 8 genes
+test6.top8 = test6 %>%
+  select(TYPE,top_list[["top8"]])
+test3.top8 = test3 %>%
+  select(TYPE,top_list[["top8"]])
+validation.4.top8 = validation.4 %>%
+  select(TYPE,top_list[["top8"]])
+prediction3 = predict(custom.top8,test3.top8,'prob')
+prediction6 = predict(custom.top8,test6.top8,'prob')
+prediction4 = predict(custom.top8,validation.4.top8,'prob')
+
+```
+
+```{r}
+pdf(file = "Combination 2 - ROC Curves for 8 Genes.pdf",   # The directory you want to save the file in
+    width = 11, # The width of the plot in inches
+    height = 8.5) # The height of the plot in inches
+
+par(pty="s") 
+lrROC <- roc(test6.top8$TYPE ~ prediction6$HCC,plot=TRUE,
+             print.auc=T,print.auc.x = 0.9,print.auc.y = 0.75,
+             col="red",
+             lwd =1.5,legacy.axes=TRUE,main="ROC Curves for 8 Genes")
+lrROC <- roc(test3.top8$TYPE ~ prediction3$HCC,add = TRUE,plot=TRUE,
+             print.auc=T,print.auc.x = 0.4,print.auc.y = 0.93,
+             col="orange",
+             lwd =1.5,legacy.axes=TRUE)
+lrROC <- roc(validation.4.top8$TYPE ~ prediction4$HCC,add = TRUE,plot=TRUE,
+             print.auc=T,print.auc.x = 0.9,print.auc.y = 0.45,
+             col="blue",
+             lwd =1.5,legacy.axes=TRUE)
+legend("bottomright",cex = 0.65,xjust = 1,legend=c('HCCDB6 Test set','HCCDB3 Test set','HCCDB4 Validation Set',
+                                                   "mtry = 1","ntree = 1000"),
+       col=c('red','orange','blue','black','black'),lwd=1)
+dev.off()
+```
+
+### Random Forest with top 16 genes 
+```{r}
+data6.train.top16 = data6.train %>%
+  select(TYPE,top_list[["top16"]])
+mtry <- sqrt(ncol(data6.train.top16)-1)
+# Define values for mtry and ntree to explore. 
+# For mtry assess 50%, 100%, and 150% of the default value.
+tunegrid <- expand.grid(.mtry=c(round(0.5*mtry),round(mtry),round(1.5*mtry)), 
+                        .ntree=c(1000, 1500, 2000, 2500, 3000))
+custom.top16 <- train(TYPE~., data=data6.train.top16, 
+                 method=customRF, 
+                 metric='Accuracy', 
+                 tuneGrid=tunegrid, 
+                 trControl=control, 
+                 verbose=T) 
+plot(custom.top16)
+```
+
+### Fitting the best model on train set 6, then predicting on test 6, test 3 and validation set 4
+```{r}
+tunegrid <- expand.grid(.mtry = round(1.5*mtry), .ntree =1500)
+custom.top16 <- train(TYPE~., data=data6.train.top16, 
+                 method=customRF, 
+                 metric='Accuracy', 
+                 tuneGrid=tunegrid, 
+                 trControl=control, 
+                 verbose=T) 
+# Prepare Test sets and Validation set for top 16 genes
+test6.top16 = test6 %>%
+  select(TYPE,top_list[["top16"]])
+test3.top16 = test3 %>%
+  select(TYPE,top_list[["top16"]])
+validation.4.top16 = validation.4 %>%
+  select(TYPE,top_list[["top16"]])
+prediction3 = predict(custom.top16,test3.top16,'prob')
+prediction6 = predict(custom.top16,test6.top16,'prob')
+prediction4 = predict(custom.top16,validation.4.top16,'prob')
+
+```
+
+```{r}
+pdf(file = "Combination 2 - ROC Curves for 16 Genes.pdf",   # The directory you want to save the file in
+    width = 11, # The width of the plot in inches
+    height = 8.5) # The height of the plot in inches
+
+par(pty="s") 
+lrROC <- roc(test6.top16$TYPE ~ prediction6$HCC,plot=TRUE,
+             print.auc=T,print.auc.x = 0.9,print.auc.y = 0.75,
+             col="red",
+             lwd =1.5,legacy.axes=TRUE,main="ROC Curves for 16 Genes")
+lrROC <- roc(test3.top16$TYPE ~ prediction3$HCC,add = TRUE,plot=TRUE,
+             print.auc=T,print.auc.x = 0.4,print.auc.y = 0.93,
+             col="orange",
+             lwd =1.5,legacy.axes=TRUE)
+lrROC <- roc(validation.4.top16$TYPE ~ prediction4$HCC,add = TRUE,plot=TRUE,
+             print.auc=T,print.auc.x = 0.9,print.auc.y = 0.45,
+             col="blue",
+             lwd =1.5,legacy.axes=TRUE)
+legend("bottomright",cex = 0.65,xjust = 1,legend=c('HCCDB6 Test set','HCCDB3 Test set','HCCDB4 Validation Set',
+                                                   "mtry = 6","ntree = 1500"),
+       col=c('red','orange','blue','black','black'),lwd=1)
+dev.off()
+```
+
+
+
+### Random Forest with top 32 genes 
+```{r}
+data6.train.top32 = data6.train %>%
+  select(TYPE,top_list[["top32"]])
+mtry <- sqrt(ncol(data6.train.top32)-1)
+# Define values for mtry and ntree to explore. 
+# For mtry assess 50%, 100%, and 150% of the default value.
+tunegrid <- expand.grid(.mtry=c(round(0.5*mtry),round(mtry),round(1.5*mtry)), 
+                        .ntree=c(1000, 1500, 2000, 2500, 3000, 3500))
+custom.top32 <- train(TYPE~., data=data6.train.top32, 
+                 method=customRF, 
+                 metric='Accuracy', 
+                 tuneGrid=tunegrid, 
+                 trControl=control, 
+                 verbose=T) 
+plot(custom.top32)
+```
+
+### Fitting the best model on train set 6, then predicting on test 6, test 3 and validation set 4
+```{r}
+tunegrid <- expand.grid(.mtry = round(1.5*mtry), .ntree =2500)
+custom.top32 <- train(TYPE~., data=data6.train.top32, 
+                 method=customRF, 
+                 metric='Accuracy', 
+                 tuneGrid=tunegrid, 
+                 trControl=control, 
+                 verbose=T) 
+# Prepare Test sets and Validation set for top 32 genes
+test6.top32 = test6 %>%
+  select(TYPE,top_list[["top32"]])
+test3.top32 = test3 %>%
+  select(TYPE,top_list[["top32"]])
+validation.4.top32 = validation.4 %>%
+  select(TYPE,top_list[["top32"]])
+prediction3 = predict(custom.top32,test3.top32,'prob')
+prediction6 = predict(custom.top32,test6.top32,'prob')
+prediction4 = predict(custom.top32,validation.4.top32,'prob')
+
+```
+
+```{r}
+pdf(file = "Combination 2 - ROC Curves for 32 Genes.pdf",   # The directory you want to save the file in
+    width = 11, # The width of the plot in inches
+    height = 8.5) # The height of the plot in inches
+
+par(pty="s") 
+lrROC <- roc(test6.top32$TYPE ~ prediction6$HCC,plot=TRUE,
+             print.auc=T,print.auc.x = 0.9,print.auc.y = 0.75,
+             col="red",
+             lwd =1.5,legacy.axes=TRUE,main="ROC Curves for 32 Genes")
+lrROC <- roc(test3.top32$TYPE ~ prediction3$HCC,add = TRUE,plot=TRUE,
+             print.auc=T,print.auc.x = 0.4,print.auc.y = 0.93,
+             col="orange",
+             lwd =1.5,legacy.axes=TRUE)
+lrROC <- roc(validation.4.top32$TYPE ~ prediction4$HCC,add = TRUE,plot=TRUE,
+             print.auc=T,print.auc.x = 0.9,print.auc.y = 0.45,
+             col="blue",
+             lwd =1.5,legacy.axes=TRUE)
+legend("bottomright",cex = 0.65,xjust = 1,legend=c('HCCDB6 Test set','HCCDB3 Test set','HCCDB4 Validation Set',
+                                                   "mtry = 8","ntree = 2500"),
+       col=c('red','orange','blue','black','black'),lwd=1)
+dev.off()
+```
+
+
+
+
+
+

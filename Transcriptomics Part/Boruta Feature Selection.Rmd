@@ -1,0 +1,188 @@
+---
+title: "Boruta Feature Selection"
+author: "Basak"
+date: "6/29/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+rm(list = ls())
+library(dplyr)
+library(tibble)
+library(caret)
+library(ggplot2)
+library(mlbench)
+require(caret)
+require(randomForest)
+require(Boruta)
+```
+
+## BORUTA for HCCDB3 Data
+### Reading HCCDB3 data sets 
+```{r}
+setwd('/Users/user/Documents/MSc BIOINFORMATICS/Individual Project/HCCDB3')
+x.3 = read.csv('DEGS_HCCDB3.csv', row.names = 1, header = TRUE)
+x.3 = as.data.frame(t(x.3))
+
+sample3_info = read.csv('prepared_sample_info3.csv', header = TRUE) 
+
+head(sample3_info)
+x.3[1:5,1:5]
+```
+### Scaling data (Data is already log2 transformed)
+```{r}
+x.3 = scale(x.3,center = TRUE, scale = TRUE)
+x.3[1:5,1:5]
+```
+### Preparing data sets to split into test and train
+```{r}
+data3 = as.data.frame(x.3) %>% 
+  rownames_to_column(var = "Samples") %>%
+  left_join(sample3_info %>% select(Samples,TYPE), by = "Samples") %>%
+  mutate(TYPE = as.factor(TYPE)) %>%
+  column_to_rownames(var = "Samples")
+```
+
+### Generating a stratified random split of the data
+```{r}
+set.seed(11) # Always same train and test split will be used in the analysis
+train3.Index <- createDataPartition(data3$TYPE, p = .7,
+                                  list = FALSE,
+                                  times = 1)
+data3.train <- data3[train3.Index,]
+test3 <- data3[-train3.Index,]
+table(test3$TYPE)
+table(data3.train$TYPE)
+```
+
+### Running Boruta method for feature selection
+```{r}
+mtry <- sqrt(ncol(x.3))
+boruta3 <- Boruta(x=data3.train[,-1],
+                 y=data3.train[,1],
+                 doTrace = 1,
+                 maxRuns = 2000, # higher the maxRuns lower the tentative features left
+                 num.trees = 1500)
+# Here 2000 is a very high number of run, however still some features are left as tentative
+# TentativeRoughFix() can be used to fill missing decisions by comparison of the median feature Z-score with the median Z-score of the most important shadow feature.
+boruta3.bank <- TentativeRoughFix(boruta3)
+df3 <- attStats(boruta3.bank)
+# oredering features by their mean importance
+df3_ordered =df3[order(df3$meanImp,decreasing = TRUE),]
+df3_ordered [1:5,]
+write.csv(df3_ordered, 'new_boruta_ranking_data3.csv',quote = F,row.names = TRUE)
+rm(mtry) 
+```
+
+## BORUTA for HCCDB4 Data
+### Reading HCCDB4 data sets 
+```{r}
+setwd('/Users/user/Documents/MSc BIOINFORMATICS/Individual Project/HCCDB4')
+x.4 = read.csv('DEGS_HCCDB4.csv', row.names = 1, header = TRUE)
+x.4 = as.data.frame(t(x.4))
+
+sample4_info = read.csv('prepared_sample_info4.csv', header = TRUE) 
+
+head(sample4_info)
+x.4[1:5,1:5]
+```
+### Scaling data (Data is already log2 transformed)
+```{r}
+x.4 = scale(x.4,center = TRUE, scale = TRUE)
+x.4[1:5,1:5]
+```
+### Preparing data sets to split into test and train
+```{r}
+data4 = as.data.frame(x.4) %>% 
+  rownames_to_column(var = "Samples") %>%
+  left_join(sample4_info %>% select(Samples,TYPE), by = "Samples") %>%
+  mutate(TYPE = as.factor(TYPE)) %>%
+  column_to_rownames(var = "Samples")
+```
+
+### Generating a stratified random split of the data
+```{r}
+set.seed(11) # Always same train and test split will be used in the analysis
+train4.Index <- createDataPartition(data4$TYPE, p = .7,
+                                  list = FALSE,
+                                  times = 1)
+data4.train <- data4[train4.Index,]
+test4 <- data4[-train4.Index,]
+table(test4$TYPE)
+table(data4.train$TYPE)
+```
+
+### Running Boruta method for feature selection
+```{r}
+mtry <- sqrt(ncol(x.4))
+boruta4 <- Boruta(x=data4.train[,-1],
+                 y=data4.train[,1],
+                 doTrace = 1,
+                 maxRuns = 2000, # higher the maxRuns lower the tentative features left
+                 num.trees = 1500)
+# Here 2000 is a very high number of run, however still some features are left as tentative
+# TentativeRoughFix() can be used to fill missing decisions by comparison of the median feature Z-score with the median Z-score of the most important shadow feature.
+boruta4.bank <- TentativeRoughFix(boruta4)
+df4 <- attStats(boruta4.bank)
+# oredering features by their mean importance
+df4_ordered =df4[order(df4$meanImp,decreasing = TRUE),]
+df4_ordered [1:5,]
+write.csv(df4_ordered, 'new_boruta_ranking_data4.csv',quote = F,row.names = TRUE)
+rm(mtry)
+```
+
+## BORUTA for HCCDB6 Data
+### Reading HCCDB6 data sets 
+```{r}
+setwd('/Users/user/Documents/MSc BIOINFORMATICS/Individual Project/HCCDB6/GSE14520(GPL3721 Subset)_Affymetrix')
+x.6 = read.csv('DEGS_HCCDB6.csv', row.names = 1, header = TRUE)
+x.6 = as.data.frame(t(x.6))
+
+sample6_info = read.csv('prepared_sample_info6.csv', header = TRUE) 
+
+head(sample6_info)
+x.6[1:5,1:5]
+```
+### Scaling data (Data is already log2 transformed)
+```{r}
+x.6 = scale(x.6,center = TRUE, scale = TRUE)
+x.6[1:5,1:5]
+```
+### Preparing data sets to split into test and train
+```{r}
+data6 = as.data.frame(x.6) %>% 
+  rownames_to_column(var = "Samples") %>%
+  left_join(sample6_info %>% select(Samples,TYPE), by = "Samples") %>%
+  mutate(TYPE = as.factor(TYPE)) %>%
+  column_to_rownames(var = "Samples")
+```
+
+### Generating a stratified random split of the data
+```{r}
+set.seed(11) # Always same train and test split will be used in the analysis
+train6.Index <- createDataPartition(data6$TYPE, p = .7,
+                                  list = FALSE,
+                                  times = 1)
+data6.train <- data6[train6.Index,]
+test6 <- data6[-train6.Index,]
+table(test6$TYPE)
+table(data6.train$TYPE)
+```
+
+### Running Boruta method for feature selection
+```{r}
+mtry <- sqrt(ncol(x.6))
+boruta6 <- Boruta(x=data6.train[,-1],
+                 y=data6.train[,1],
+                 doTrace = 1,
+                 maxRuns = 2000, # higher the maxRuns lower the tentative features left
+                 num.trees = 1500)
+# Here 2000 is a very high number of run, however still some features are left as tentative
+# TentativeRoughFix() can be used to fill missing decisions by comparison of the median feature Z-score with the median Z-score of the most important shadow feature.
+boruta6.bank <- TentativeRoughFix(boruta6)
+df6 <- attStats(boruta6.bank)
+# oredering features by their mean importance
+df6_ordered =df6[order(df6$meanImp,decreasing = TRUE),]
+df6_ordered [1:5,]
+write.csv(df6_ordered, 'new_boruta_ranking_data6.csv',quote = F,row.names = TRUE)
+```

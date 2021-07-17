@@ -1,0 +1,98 @@
+---
+title: "Line graphs for AUC Values"
+author: "Basak"
+date: "7/2/2021"
+output: html_document
+---
+```{r, include=FALSE}
+rm(list = ls())
+```
+```{r}
+combination1= c(2,4,8,16,23)
+test3 = c(0.9, 0.929, 0.984, 0.994, 0.997)
+test4 = c(0.925, 0.970, 0.997, 1, 1)
+validation6 = c(0.952, 0.972, 0.987, 0.986,0.985)
+
+```
+
+```{r}
+pdf(file = "Combination 1 - AUC Values vs Number of Genes.pdf",   # The directory you want to save the file in
+    width = 11, # The width of the plot in inches
+    height = 8.5) # The height of the plot in inches
+plot(combination1, test3, type = "b" ,col = "red", cex.lab=1.48, cex.axis=1.5,
+     # main="Combination 1 - AUC Values vs Number of Genes", 
+     xlab ='Number of Top Genes',
+     ylab = 'AUC Values', cex.axis=1.48,ylim = range(c(test3, test4)), xaxt="n") +
+lines(combination1, test4, type = "b", col="orange")+
+lines(combination1, validation6,type = "b",col="blue")+
+axis(1, at=c(2,4,8,16,23), labels = TRUE, cex.axis=1.5)+
+legend("bottomright", legend=c("HCCDB3 Test Set", "HCCDB4 Test Set", "HCCDB6 Validation Data"),
+       col=c("red",'orange',"blue"), lty = 1, cex=1.5)
+dev.off()
+
+```
+```{r}
+rm(list = ls())
+
+```
+
+
+```{r}
+combination2= c(2,4,8,13)
+test4 = c(0.975, 0.992, 0.998, 1)
+test6= c(0.958, 0.995, 0.998, 0.998)
+validation3 = c(0.889, 0.918, 0.959, 0.988)
+
+```
+
+```{r}
+pdf(file = "Combination 2 - AUC Values vs Number of Genes.pdf",   # The directory you want to save the file in
+    width = 11, # The width of the plot in inches
+    height = 8.5) # The height of the plot in inches
+plot(combination2, test4, type = "b" ,col = "red", cex.lab=1.48, cex.axis=1.5,
+     # main="Combination 3 - AUC Values vs Number of Genes", 
+     xlab='Number of Top Genes', 
+     ylab = 'AUC Values', cex.axis=1.48, ylim = range(c(test4, validation3)), xaxt="n") +
+lines(combination2, test6, type = "b", col="orange")+
+lines(combination2, validation3,type = "b",col="blue")+
+axis(1, at=c(2,4,8,13), labels = TRUE, cex.axis=1.5)+
+legend("bottomright", legend=c("HCCDB4 Test Set", "HCCDB6 Test Set", "HCCDB3 Validation Data"),
+       col=c("red",'orange',"blue"), lty = 1, cex=1.5)
+dev.off()
+
+```
+
+
+
+```{r}
+rm(list = ls())
+
+```
+
+
+```{r}
+combination3= c(2,4,8,16,32)
+test6 = c(0.967, 0.974, 0.993, 0.996, 0.999)
+test3= c(0.880, 0.896, 0.979, 0.980, 0.991)
+validation4 = c(0.951, 0.955, 0.988, 0.990,0.992)
+
+```
+
+```{r}
+pdf(file = "Combination 3 - AUC Values vs Number of Genes.pdf",   # The directory you want to save the file in
+    width = 11, # The width of the plot in inches
+    height = 8.5) # The height of the plot in inches
+plot(combination3, test6, type = "b" ,col = "red", cex.lab=1.48, cex.axis=1.5,
+     #main="Combination 3 - AUC Values vs Number of Genes", cex.lab=1.4, cex.axis=1.4,
+     xlab='Number of Top Genes', 
+     ylab = 'AUC Values', cex.axis=1.48, ylim = range(c(test6, test3)), xaxt="n") +
+lines(combination3, test3, type = "b", col="orange")+
+lines(combination3, validation4,type = "b",col="blue")+
+axis(1, at=c(2,4,8,16,32), labels = TRUE, cex.axis=1.5)+
+legend("bottomright", legend=c("HCCDB6 Test Set", "HCCDB3 Test Set", "HCCDB4 Validation Data"),
+       col=c("red",'orange',"blue"), lty = 1, cex=1.5)
+dev.off()
+
+```
+
+

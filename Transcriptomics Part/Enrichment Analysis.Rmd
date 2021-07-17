@@ -1,0 +1,72 @@
+---
+title: "Enrichment Analysis"
+author: "Basak"
+date: "7/8/2021"
+output: html_document
+---
+```{r}
+rm(list = ls())
+```
+
+```{r setup, include=FALSE}
+require("enrichR")
+library("xlsx")
+```
+
+```{r}
+rank1 = read.csv('top_list1-8.csv', header = TRUE)
+rank2 = read.csv('top_list2-8.csv', header = TRUE)
+rank3 = read.csv('top_list3-8.csv', header = TRUE)
+
+genes = rbind(rank1,rank2,rank3)
+gene_list = unique(genes$x)
+```
+
+
+```{r}
+listEnrichrSites()
+```
+
+```{r}
+setEnrichrSite('Enrichr')
+
+websiteLive = TRUE
+
+# finding the list of all available databases from Enrichr.
+dbs <- listEnrichrDbs() 
+
+if (is.null(dbs)) websiteLive <- FALSE
+if (websiteLive) head(dbs)
+
+dbs <- c("GO_Molecular_Function_2021", "GO_Cellular_Component_2021", "GO_Biological_Process_2021", "Reactome_2016", "KEGG_2021_Human")
+if (websiteLive) {
+    enriched <- enrichr(gene_list, dbs)
+}
+
+```
+```{r}
+library(gridExtra)
+
+df = if (websiteLive) enriched[["KEGG_2021_Human"]]
+
+png("output.png", height = 20*nrow(df), width = 125*ncol(df), bg = "white")
+grid.table(df[1:20,])
+dev.off()
+```
+```{r}
+table = if (websiteLive) enriched[["KEGG_2021_Human"]]
+
+write.xlsx(table, file = "KEGG 2021 Human Enrichment Analysis Results.xlsx", sheetName = "Sheet1", 
+  col.names = TRUE, row.names = TRUE, append = FALSE)
+```
+
+
+```{r}
+pdf(file = "Pathway Enrichment Analysis - KEGG 2021.pdf",
+    width = 11, # The width of the plot in inches
+    height = 8.5) # The height of the plot in inches)
+if (websiteLive) plotEnrich(enriched[[5]], showTerms = 20, numChar = 55, y = "Count", orderBy = "Adjusted.P.value", title = " ")
+dev.off()
+```
+
+

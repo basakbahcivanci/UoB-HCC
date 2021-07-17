@@ -1,0 +1,171 @@
+---
+title: "HCCDB4"
+author: "Basak"
+date: "6/25/2021"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+# knitr::opts_chunk$set(echo = TRUE)
+rm(list = ls())
+library(MASS)
+library("AnnotationDbi")
+library("org.Hs.eg.db")
+library(dplyr)
+library(tibble)
+library("factoextra")
+```
+
+## DATA PREPARATION
+### Reading the related HCCDB3 data sets 
+```{r}
+setwd('/Users/user/Documents/MSc BIOINFORMATICS/Individual Project/HCCDB4')
+sample_info = read.table('HCCDB4.sample.txt', header = TRUE, row.names = 1)
+sample_info = as.data.frame(t(sample_info))
+sample_info = sample_info %>% rownames_to_column(var = 'Samples')
+head(sample_info)
+table(sample_info$TYPE)
+```
+
+
+```{r}
+data = read.csv('GSE36376.gene.txt',sep = '\t',header = TRUE)
+data[1:5,1:5]
+```
+
+
+### Checking Gene Names and ENTREZ ID Frequencies
+Below code chunk checks frequencies of the genes in "Symbol" column of the data. Moreover, the second chunck checks the uniqueness of ENTREZ_ID column, as well, since it will be used to re-annotate the symbols later. 
+
+```{r}
+# Occurence of genes in the dataset
+counts = count(data, data$Symbol)
+# Genes which occur more than one
+counts[counts$n>1,]
+# NA which occur more than one in the Symbol column
+counts[is.na(counts$`data$Symbol`),]
+```
+
+```{r}
+# Occurence of ENTREZ ID's in the dataset
+counts = count(data, data$Entrez_ID)
+# ENTREZ ID's which occur more than one
+counts[counts$n>1,]
+# NA which occur more than one in the ENTREZ ID column
+counts[is.na(counts$`data$Entrez_ID`),]
+```
+
+### Gene symbols are re-annotated by using their ENTREZ ID. This is also needed because later when these symbols are used in immune deconvolution algorithms, some methods require specifically "AnnotationDbi" annotated gene symbols.
+```{r}
+geneSymbols =  AnnotationDbi::select(org.Hs.eg.db, keys=as.character(data$Entrez_ID),
+                                     columns = c("ENTREZID", "SYMBOL"),keytype="ENTREZID",
+                                     multiVals="first")
+# Match and replace symbols with re-annotated symbols in the data
+data$Symbol[match(geneSymbols$ENTREZID, data$Entrez_ID)] <- geneSymbols$SYMBOL
+```
+### Checking Gene Names Frequency again, and removing the ones which can not be annotated.
+```{r}
+# Occurence of genes in the dataset
+counts = count(data, data$Symbol)
+# Gene names which occur more than one 
+counts[counts$n>1,]
+# NA which occur more than one in the Symbol column
+counts[is.na(counts$`data$Symbol`),]
+```
+
+```{r}
+# remove rows with no gene names (removes NAs)
+data = data[complete.cases(data$Symbol),]
+rownames(data) = data$Symbol
+```
+
+### Matching the order of sample info and data (Checking)
+```{r}
+# match the sample names
+match_index = match(sample_info$Samples, colnames(data))
+data = data[,match_index]
+dim(data)
+data[1:5,1:5]
+```
+### Checking Missing Values
+```{r}
+which(is.na(data), arr.ind=TRUE)
+```
+### Data is already log2 transformed. 
+```{r}
+boxplot(data[,runif(10, 1, dim(data)[2])])
+```
+### Transpose data for missing imputation with its related group mean, but also for PCA since it requires rows of the data to be observations (n=patients) and columns to be variables(p=genes). The coefficient matrix is p by p matrix
+```{r}
+data = as.data.frame(t(data))
+data[1:5,1:5]
+```
+### Imputing missing values. 
+#### Note: Although, output shows some messages about 'ignoring the group variable column', it does the imputation by considering grouping, but skips that grouping column when performing missing value imputation.
+```{r}
+data = data %>% 
+  rownames_to_column(var = "Samples") %>%
+  left_join(sample_info %>% select(Samples,TYPE), by = "Samples") %>%
+  group_by(TYPE) %>%
+  mutate_all(funs(ifelse(is.na(.), mean(., na.rm = TRUE),.))) %>%
+  column_to_rownames(var = "Samples")
+# Remove TYPE variable for further analysis
+data = data %>% select(-TYPE)
+```
+
+### Data is already log2 transformed. Scaling is applied in order to fix the symmetry of the data and make it more like normally distributed in order to perform PCA.
+
+```{r}
+groups = sample_info$TYPE
+res.pca <- prcomp(data, scale. = TRUE) # with autoscaling
+#library(ggplot2)
+fviz_pca_ind(res.pca,
+             geom.ind = "point", # show points only (nbut not "text")
+             col.ind = groups, # color by groups
+             addEllipses = TRUE, # Concentration ellipses
+             legend.title = "Groups", label = "ind"
+             ) + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+r=res.pca$x
+
+pdf(file = "HCCDB4 - PCA.pdf")
+fviz_pca_ind(res.pca,
+             geom.ind = "point", # show points only (nbut not "text")
+             col.ind = groups, # color by groups
+             addEllipses = TRUE, # Concentration ellipses
+             legend.title = "Groups", label = "ind"
+             ) + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+dev.off()
+```
+
+### By visual inspection, it can be seen that one Adjacent sample sits inside of HCC cluster. It has been removed with the following codes, since it might be potentially 
+
+```{r}
+outlier = which(r[1:193,1]>0 & r[1:193,2]>0)
+res.pca <- prcomp(data[-outlier,], scale. = TRUE)
+#library(ggplot2)
+fviz_pca_ind(res.pca,
+             geom.ind = "point", # show points only (nbut not "text")
+             col.ind = groups[-outlier], # color by groups
+             addEllipses = TRUE, # Concentration ellipses
+             legend.title = "Groups", label = "ind"
+             ) + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+pdf(file = "HCCDB4 - PCA- Without Mislabeled One.pdf")
+fviz_pca_ind(res.pca,
+             geom.ind = "point", # show points only (nbut not "text")
+             col.ind = groups[-outlier], # color by groups
+             addEllipses = TRUE, # Concentration ellipses
+             legend.title = "Groups", label = "ind"
+             ) + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
+dev.off()
+
+```
+
+### Write out (un-scaled) HCCDB4 expression data set and sample data set into csv file.
+#### Note: Unscaled is needed for immune deconvolution algorithms. One algoritm requires even without log transformation which will be undone later on.
+```{r}
+write.csv(data[-outlier,], 'prepared_data4.csv',quote = F,row.names = T)
+write.csv(sample_info[-outlier,], 'prepared_sample_info4.csv',quote = F,row.names = F)
+```
+
