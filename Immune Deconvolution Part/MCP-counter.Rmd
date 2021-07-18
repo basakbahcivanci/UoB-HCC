@@ -95,7 +95,7 @@ mcp.func = function(data, sample_info) {
   mcp.hcc = cbind(groups = "HCC", p.hcc)
   
   
-   # Rowbing two data to plot
+  # Row binding two data to prepare it for plotting
   plot.data = rbind(mcp.adj,mcp.hcc)
   
   
