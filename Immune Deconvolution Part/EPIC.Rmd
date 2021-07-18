@@ -93,7 +93,7 @@ epic.func = function(data, sample_info) {
     gather(samples, fractions, -cell_type)
   epic.adj = cbind(groups = "Adjacent", p.adj)
   
-  # Row binding two data to us it while ploting
+  # Row binding two data to prepare it for plotting
   plot.data = rbind(epic.adj,epic.hcc)
   
   # Stacked bar chart 
