@@ -1,0 +1,156 @@
+---
+title: "EPIC"
+author: "Basak"
+date: "7/10/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+```
+
+```{r}
+rm(list = ls())
+
+library(ggplot2)
+library(dplyr)
+library(tibble)
+library(ggplot2)
+library(tidyr)
+```
+
+#### Reading datasets
+```{r}
+
+data3 = read.csv('prepared_data3.csv', header = TRUE)
+sample_info3 = read.csv('prepared_sample_info3.csv', header = TRUE, row.names = 1) # new olarak kalacak data3
+
+
+data4 = read.csv('prepared_data4.csv', header = TRUE)
+sample_info4 = read.csv('prepared_sample_info4.csv', header = TRUE, row.names = 1) # new olarak kalacak data3
+
+
+data6 = read.csv('prepared_data6.csv', header = TRUE)
+sample_info6 = read.csv('prepared_sample_info6.csv', header = TRUE, row.names = 1) # new olarak kalacak data3
+
+```
+
+#### Function to prepare datasets before deconvolution
+```{r}
+prep = function(data) {
+  x = data
+  rownames(x) = x$X
+  x = x[,-1]
+  return(x)
+}
+```
+
+#### Immune deconvolution
+```{r}
+epic.func = function(data, sample_info) {
+  epic = immunedeconv::deconvolute(data, method = 'epic', arrays=T, tumor=T, scale_mrna = T)
+  epic = as.data.frame(epic)
+  rownames(epic) = epic$cell_type
+  epic[1:5,1:5]
+  epic = epic[,-1]
+  epic = as.data.frame(t(epic))
+  epic[1:5,1:5]
+  TYPE = sample_info$TYPE
+  epic = cbind(TYPE,epic)
+  
+  #### Filtering HCC samples
+  epic.hcc = epic %>%
+    rownames_to_column('samples') %>%
+    group_by(TYPE) %>%
+    filter(any(TYPE == "HCC")) %>%
+    column_to_rownames('samples')
+  # Erase column type
+  epic.hcc = epic.hcc[,-1]
+  # Transpose and add cell type column for gather function
+  epic.hcc = as.data.frame(t(epic.hcc))
+  epic.hcc = cbind(cell_type = row.names(epic.hcc), epic.hcc)
+  # Creating long data
+  p.hcc = epic.hcc %>%
+    gather(samples, fractions, -cell_type)
+  # Add group to use later for plotting
+  epic.hcc = cbind(groups = "HCC", p.hcc)
+  
+  #### Filtering Adjacent samples
+  epic.adj = epic %>%
+    rownames_to_column('samples') %>%
+    group_by(TYPE) %>%
+    filter(any(TYPE == "Adjacent")) %>%
+    column_to_rownames('samples')
+  # Erase column type
+  epic.adj = epic.adj[,-1]
+  # Transpose and add cell type column for gather function
+  epic.adj = as.data.frame(t(epic.adj))
+  epic.adj = cbind(cell_type = row.names(epic.adj), epic.adj)
+  # Creating long data
+  p.adj = epic.adj %>%
+    gather(samples, fractions, -cell_type)
+  epic.adj = cbind(groups = "Adjacent", p.adj)
+  
+  # Rowbing two data to plot
+  plot.data = rbind(epic.adj,epic.hcc)
+  
+  # Stacked bar chart 
+  # (here we couldnt use this representation, 
+  # since for CAFs and Neutrophils EPIC could not estimate exact fractions)
+  stacked = plot.data %>% 
+    ggplot(aes(x = fractions, y = samples, fill=cell_type)) +
+    geom_bar(stat='identity') +
+    coord_flip() +
+    scale_fill_brewer(palette="Paired") +
+    facet_wrap(~groups, scales="free", nrow=1) + 
+    ggtitle("Stacked bar charts of Adjacent and Tumour Sample Cell Fractions") +
+    theme( axis.text.x = element_blank(),
+           # Remove panel grid lines
+           panel.grid.major = element_blank(),
+           panel.grid.minor = element_blank(),
+           # Remove panel background
+           panel.background = element_blank(),
+           plot.title = element_text(color="black", size=14, face="bold.italic",hjust = 0.5))
+
+  # Violin Plot
+  violinp = plot.data %>% 
+    ggplot(aes(x = groups, y = fractions, color=groups)) +
+    geom_violin(trim=FALSE,palette =c("#FC4E07","#00AFBB", "#FC4E07")) +
+    geom_boxplot(width=0.1) +
+    geom_jitter(height = 0, width = 0.1) +
+    stat_compare_means(label.x = 0.70, label.y = NULL) + 
+    facet_wrap(~cell_type, scales="free_y", nrow=3) + 
+    ggtitle("EPIC Cell Fractions of Tumour and Adjacent Samples") +
+    theme( axis.text.x = element_blank(),
+           # Remove panel grid lines
+           panel.grid.major = element_blank(),
+           panel.grid.minor = element_blank(),
+           # Remove panel background
+           panel.background = element_blank(),
+           plot.title = element_text(color="black", size=14, face="bold.italic",hjust = 0.5))
+  
+  
+  return(list(epic, stacked, violinp))
+}
+```
+
+# Running the custom function to get results for each dataset
+```{r}
+data3.prep = prep(data3)
+data3.res = epic.func(data3.prep,sample_info3)
+data3.res[[3]]
+
+data4.prep = prep(data4)
+data4.res = epic.func(data4.prep,sample_info4)
+data4.res[[3]]
+
+
+data6.prep = prep(data6)
+data6.res = epic.func(data6.prep,sample_info6)
+data6.res[[3]]
+```
+
+
+
