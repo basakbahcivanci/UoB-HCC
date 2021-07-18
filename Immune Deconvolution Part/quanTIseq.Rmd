@@ -1,0 +1,149 @@
+---
+title: "quanTIseq"
+author: "Basak"
+date: "7/10/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+```
+
+```{r}
+rm(list = ls())
+
+library(ggplot2)
+library(dplyr)
+library(tibble)
+library(ggplot2)
+library(tidyr)
+```
+
+#### Reading datasets
+```{r}
+
+data3 = read.csv('prepared_data3.csv', header = TRUE)
+sample_info3 = read.csv('prepared_sample_info3.csv', header = TRUE, row.names = 1) # new olarak kalacak data3
+
+
+data4 = read.csv('prepared_data4.csv', header = TRUE)
+sample_info4 = read.csv('prepared_sample_info4.csv', header = TRUE, row.names = 1) # new olarak kalacak data3
+
+
+data6 = read.csv('prepared_data6.csv', header = TRUE)
+sample_info6 = read.csv('prepared_sample_info6.csv', header = TRUE, row.names = 1) # new olarak kalacak data3
+
+```
+
+#### Function to prepare datasets before deconvolution
+```{r}
+prep = function(data) {
+  x = data
+  rownames(x) = x$X
+  x = x[,-1]
+  return(x)
+}
+```
+
+#### Immune deconvolution
+```{r}
+quanti.func = function(data, sample_info) {
+  quanti = immunedeconv::deconvolute(data,method = 'quantiseq', arrays=T, tumor=T, scale_mrna = T)
+  quanti = as.data.frame(quanti)
+  rownames(quanti) = quanti$cell_type
+  quanti = quanti[,-1]
+  quanti = as.data.frame(t(quanti))
+  TYPE = sample_info$TYPE
+  quanti = cbind(TYPE,quanti)
+  
+   #### Filtering Adjacent samples
+  quanti.adj = quanti %>%
+    rownames_to_column('samples') %>%
+    group_by(TYPE) %>%
+    filter(any(TYPE == "Adjacent")) %>%
+    column_to_rownames('samples')
+  
+  # Erase column TYPE
+  quanti.adj = quanti.adj[,-1]
+  # transpose and add cell type column for gather function
+  quanti.adj = as.data.frame(t(quanti.adj))
+  quanti.adj = cbind(cell_type = row.names(quanti.adj), quanti.adj)
+  # Creating long data
+  p.adj = quanti.adj %>%
+    gather(samples, fractions, -cell_type)
+  quanti.adj = cbind(groups = "Adjacent", p.adj)
+  
+  #### Filtering HCC samples
+  quanti.hcc = quanti %>%
+    rownames_to_column('samples') %>%
+    group_by(TYPE) %>%
+    filter(any(TYPE == "HCC")) %>%
+    column_to_rownames('samples')
+  # Erase column TYPE
+  quanti.hcc = quanti.hcc[,-1]
+  # Transpose and add cell type column for gather function
+  quanti.hcc = as.data.frame(t(quanti.hcc))
+  quanti.hcc = cbind(cell_type = row.names(quanti.hcc), quanti.hcc)
+  # Creating long data
+  p.hcc = quanti.hcc %>%
+    gather(samples, fractions, -cell_type)
+  quanti.hcc = cbind(groups = "HCC", p.hcc)
+  
+  # Row binding two data to us it while ploting
+  plot.data = rbind(quanti.adj,quanti.hcc)
+  
+  stacked = plot.data %>% 
+    ggplot(aes(x = fractions, y = samples, fill=cell_type)) +
+    geom_bar(stat='identity') +
+    coord_flip() +
+    scale_fill_brewer(palette="Paired") +
+    facet_wrap(~groups, scales="free", nrow=1) + 
+    ggtitle("Stacked bar charts of Adjacent and Tumour Sample Cell Fractions") +
+    theme( axis.text.x = element_blank(),
+           # Remove panel grid lines
+           panel.grid.major = element_blank(),
+           panel.grid.minor = element_blank(),
+           # Remove panel background
+           panel.background = element_blank(),
+           plot.title = element_text(color="black", size=14, face="bold.italic",hjust = 0.5))
+  
+  # Violin Plot
+  violinp = plot.data %>% 
+    ggplot(aes(x = groups, y = fractions, color=groups)) +
+    geom_violin(trim=FALSE,palette =c("#FC4E07","#00AFBB", "#FC4E07")) +
+    geom_boxplot(width=0.1) +
+    stat_compare_means(label.x = 0.70, label.y = NULL) + 
+    facet_wrap(~cell_type, scales="free_y", nrow=3) + 
+    ggtitle("quanTIseq Cell Fractions of Tumour and Adjacent Samples") +
+    theme(strip.text = element_text(face="bold", size=12),
+          axis.text.x = element_blank(),
+           # Remove panel grid lines
+           panel.grid.major = element_blank(),
+           panel.grid.minor = element_blank(),
+           # Remove panel background
+           panel.background = element_blank(),
+           plot.title = element_text(color="black", size=14, face="bold.italic",hjust = 0.5))
+  
+  
+  return(list(quanti, stacked, violinp))
+}
+
+```
+
+# Running the custom functions to get results for each dataset
+```{r}
+data3.prep = prep(data3)
+data3.res = quanti.func(data3.prep,sample_info3)
+data3.res[[2]]
+
+data4.prep = prep(data4)
+data4.res = quanti.func(data4.prep,sample_info4)
+data4.res[[2]]
+
+
+data6.prep = prep(data6)
+data6.res = quanti.func(data6.prep,sample_info6)
+data6.res[[2]]
+```
