@@ -86,7 +86,7 @@ mcp.func = function(data, sample_info) {
 
   # Erase column type
   mcp.hcc = mcp.hcc[,-1]
-  # transpose and add cell type column for gather function
+  # Transpose and add cell type column for gather function
   mcp.hcc = as.data.frame(t(mcp.hcc))
   mcp.hcc = cbind(cell_type = row.names(mcp.hcc), mcp.hcc)
   # Creating long data
