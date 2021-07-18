@@ -91,7 +91,7 @@ quanti.func = function(data, sample_info) {
     gather(samples, fractions, -cell_type)
   quanti.hcc = cbind(groups = "HCC", p.hcc)
   
-  # Row binding two data to us it while ploting
+  # Row binding two data to prepare it for plotting
   plot.data = rbind(quanti.adj,quanti.hcc)
   
   stacked = plot.data %>% 
