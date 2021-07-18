@@ -1,0 +1,118 @@
+---
+title: "CIBERSORT-REL"
+author: "Basak"
+date: "7/13/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+rm(list = ls())
+library(ggplot2)
+library(dplyr)
+library(tibble)
+library(ggplot2)
+library(tidyr)
+library(immunedeconv)
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+```
+
+#### Reading datasets
+```{r}
+sample_info3 = read.csv('prepared_sample_info3.csv', header = TRUE)
+colnames(sample_info3)[1] = "Mixture"
+
+sample_info4 = read.csv('prepared_sample_info4.csv', header = TRUE)
+colnames(sample_info4)[1] = "Mixture"
+
+sample_info6 = read.csv('prepared_sample_info6.csv', header = TRUE) 
+colnames(sample_info6)[1] = "Mixture"
+```
+
+
+```{r}
+data3.scores_rel = read.csv("CIBERSORTx_Job27_Results.csv",sep = ",")
+# data3.scores_rel[1:5,1:5]
+dim(data3.scores_rel)
+
+data4.scores_rel = read.csv("CIBERSORTx_Job26_Results.csv",sep = ",")
+# data4.scores_rel[1:5,1:5]
+dim(data4.scores_rel)
+
+data6.scores_rel = read.csv("CIBERSORTx_Job21_Results.csv",sep = ",")
+# data6.scores_rel[1:5,1:5]
+dim(data6.scores_rel)
+```
+#### Preparing deconvolution results which obtained from its web application
+```{r}
+data3.scores_rel = data3.scores_rel %>% filter(P.value<=0.05)
+dim(data3.scores_rel)
+data4.scores_rel = data4.scores_rel %>% filter(P.value<=0.05)
+dim(data4.scores_rel)
+data6.scores_rel = data6.scores_rel %>% filter(P.value<=0.05)
+dim(data4.scores_rel)
+```
+
+##### Merging deconvotion dataframe with TYPE information
+```{r}
+data3.merge = data3.scores_rel %>%
+  left_join(sample_info3%>% dplyr::select(Mixture,TYPE), by = 'Mixture')
+data3.merge[1:5,1:5]
+
+data4.merge = data4.scores_rel %>%
+  left_join(sample_info4%>% dplyr::select(Mixture,TYPE), by = 'Mixture')
+
+data6.merge = data6.scores_rel %>%
+  left_join(sample_info6%>% dplyr::select(Mixture,TYPE), by = 'Mixture')
+```
+
+#### This function gives the results obtained by CIBERSORT with a plot
+```{r}
+ciber.func = function(data) {
+  ciber = data%>% dplyr::select(-P.value, -Correlation, -RMSE)
+  plot.data = ciber %>%
+    gather(cell_type, fractions, -TYPE, -Mixture)
+  # Violin Plot
+  violinp = plot.data %>% 
+    ggplot(aes(x = TYPE, y = fractions, color=TYPE)) +
+    geom_violin(trim=FALSE,palette =c("#FC4E07","#00AFBB", "#FC4E07")) +
+    geom_boxplot(width=0.1) +
+    stat_compare_means(label.x = 1, label.y = NULL, size = 7) + 
+    facet_wrap(~cell_type, scales="free_y", nrow=6) + 
+    #ggtitle("CIBERSORT Relative Cell Scores of HCC and Adjacent Samples") +
+    theme( strip.text = element_text(face="bold", size=24), axis.text.x = element_blank(),
+           text = element_text(size = 24),
+           # Remove panel grid lines
+           panel.grid.major = element_blank(),
+           panel.grid.minor = element_blank(),
+           # Remove panel background
+           panel.background = element_blank(),
+           plot.title = element_text(color="black", size=24, face="bold.italic",hjust = 0.5))
+  
+  return(violinp)
+}
+```
+
+
+### Results for each dataset
+```{r}
+data3.res = ciber.func(data3.merge)
+data3.res[1]
+```
+
+```{r}
+data4.res = ciber.func(data4.merge)
+data4.res[1]
+```
+
+
+```{r}
+data6.res = ciber.func(data6.merge)
+data6.res[1]
+```
+
+

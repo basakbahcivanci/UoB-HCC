@@ -1,0 +1,121 @@
+---
+title: "TIMER"
+author: "Basak"
+date: "7/12/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+```
+
+```{r}
+rm(list = ls())
+
+library(ggplot2)
+library(dplyr)
+library(tibble)
+library(ggplot2)
+library(tidyr)
+```
+
+#### Reading datasets
+```{r}
+data = read.csv('prepared_data4.csv', header = TRUE, row.names = 1)
+sample_info = read.csv('prepared_sample_info4.csv', header = TRUE, row.names = 1)
+```
+#### Preparing data for deconvolution
+```{r}
+# changing column name 
+sample_info = sample_info %>% mutate(stages = AJCC_STAGE) %>% dplyr::select(-AJCC_STAGE)
+
+# extracting sample type info
+info = sample_info %>% dplyr::select(TYPE)
+
+
+# transposing the data to filter later
+data = as.data.frame(t(data))
+
+
+# Merge two data set and sample type dataframe by keys
+data = left_join(info %>% mutate(samples = rownames(info)), data %>% mutate(samples = rownames(data)),
+                   by = 'samples')
+
+# filtering HCC group 
+data.hcc = data %>% 
+  group_by(TYPE) %>%
+  filter(any(TYPE == "HCC")) %>%
+  column_to_rownames('samples') %>%
+  dplyr::select(-TYPE)
+data.hcc = as.data.frame(data.hcc)
+
+# transposing back for deconvolution
+data.hcc = t(data.hcc)
+```
+
+#### Immune deconvolution 
+```{r}
+timer = immunedeconv::deconvolute_timer(data.hcc,
+                                        indications = rep(c('LIHC'), # each sample is tumour sample
+                                        each=dim(data.hcc)[2]))
+
+# transposing to later add stage and sample tye information of each deconvaluted sample
+timer = as.data.frame(t(timer))
+info = sample_info %>% dplyr::select(TYPE,stages)
+
+# Merge two data sets by creating new key sample
+timer2 = right_join(info %>% mutate(samples = rownames(info)), 
+                    timer %>% mutate(samples = rownames(timer)),
+                     by = 'samples')
+
+# combining stage 3a, 3b and 3c into stage 3
+timer.hcc = timer2 %>%
+   mutate(stages = replace(stages, stages == "3a", "3")) %>% 
+   mutate(stages = replace(stages, stages == "3c", "3")) %>% 
+   mutate(stages = replace(stages, stages == "3b", "3"))
+
+
+# creating long dataset for ggplot
+timer.hcc = timer.hcc %>% dplyr::select(-TYPE) %>%
+    gather(cell_types, fractions, -samples,-stages)
+
+# saving resulting Kruskal Wallis test result
+pdf("TIMER-VIOLIN-Kruskal.pdf",
+    width = 11, # The width of the plot in inches
+    height = 8.5) # The height of the plot in inches)
+timer.hcc %>%
+    ggplot(aes(x = stages, y = fractions, color=stages)) +
+    geom_violin(trim=FALSE,palette =c("#FC4E07","#00AFBB", "#FC4E07")) +
+    geom_boxplot(width=0.1) +
+    stat_compare_means() + # Default method = "kruskal.test" for multiple groups
+    stat_compare_means(label.x = 1, label.y = NULL) +
+    facet_wrap(~cell_types, scales="free_y", nrow=3) + 
+    #ggtitle("Abundance Score Distributions of Tumour subtypes by TIMER") +
+    theme(strip.text = element_text(face="bold", size=12),
+          axis.text.x = element_blank(),
+          # Remove panel grid lines
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+          # Remove panel background
+          panel.background = element_blank(),
+          plot.title = element_text(color="black", size=14, face="bold.italic",hjust = 0.5))
+dev.off()
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
