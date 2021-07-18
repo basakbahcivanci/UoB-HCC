@@ -1,0 +1,139 @@
+---
+title: "MCP-counter"
+author: "Basak"
+date: "7/10/2021"
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(warning = FALSE)
+knitr::opts_chunk$set(message = FALSE)
+```
+
+```{r}
+rm(list = ls())
+
+library(ggplot2)
+library(dplyr)
+library(tibble)
+library(ggplot2)
+library(tidyr)
+```
+
+#### Reading datasets
+```{r}
+
+data3 = read.csv('prepared_data3.csv', header = TRUE)
+sample_info3 = read.csv('prepared_sample_info3.csv', header = TRUE, row.names = 1) # new olarak kalacak data3
+
+
+data4 = read.csv('prepared_data4.csv', header = TRUE)
+sample_info4 = read.csv('prepared_sample_info4.csv', header = TRUE, row.names = 1) # new olarak kalacak data3
+
+
+data6 = read.csv('prepared_data6.csv', header = TRUE)
+sample_info6 = read.csv('prepared_sample_info6.csv', header = TRUE, row.names = 1) # new olarak kalacak data3
+
+```
+
+#### Function to prepare datasets before deconvolution
+```{r}
+prep = function(data) {
+  x = data
+  rownames(x) = x$X
+  x = x[,-1]
+  return(x)
+}
+```
+
+#### Immune deconvolution
+```{r}
+mcp.func = function(data, sample_info) {
+  mcp = immunedeconv::deconvolute(data, method= 'mcp_counter')
+  mcp = as.data.frame(mcp)
+  rownames(mcp) = mcp$cell_type
+  mcp = mcp[,-1]
+  mcp = as.data.frame(t(mcp))
+  TYPE = sample_info$TYPE
+  mcp = cbind(TYPE,mcp)
+  
+  #### Filtering Adjacent samples
+  mcp.adj = mcp %>%
+    rownames_to_column('samples') %>%
+    group_by(TYPE) %>%
+    filter(any(TYPE == "Adjacent")) %>%
+    column_to_rownames('samples')
+
+  # Erase column type
+  mcp.adj = mcp.adj[,-1]
+  # Transpose and add cell type column for gather function
+  mcp.adj = as.data.frame(t(mcp.adj))
+  mcp.adj = cbind(cell_type = row.names(mcp.adj), mcp.adj)
+  
+  # Creating long data
+  p.adj = mcp.adj %>%
+    gather(samples, scores, -cell_type)
+  mcp.adj = cbind(groups = "Adjacent", p.adj)
+
+  #### Filtering HCC samples
+  mcp.hcc = mcp %>%
+    rownames_to_column('samples') %>%
+    group_by(TYPE) %>%
+    filter(any(TYPE == "HCC")) %>%
+    column_to_rownames('samples')
+
+  # Erase column type
+  mcp.hcc = mcp.hcc[,-1]
+  # transpose and add cell type column for gather function
+  mcp.hcc = as.data.frame(t(mcp.hcc))
+  mcp.hcc = cbind(cell_type = row.names(mcp.hcc), mcp.hcc)
+  # Creating long data
+  p.hcc = mcp.hcc %>%
+                  gather(samples, scores, -cell_type)
+  mcp.hcc = cbind(groups = "HCC", p.hcc)
+  
+  
+   # Rowbing two data to plot
+  plot.data = rbind(mcp.adj,mcp.hcc)
+  
+  
+  # Violin Plot
+  violinp = plot.data %>% 
+    ggplot(aes(x = groups, y = scores, color=groups)) +
+    geom_violin(trim=FALSE,palette =c("#FC4E07","#00AFBB", "#FC4E07")) +
+    geom_boxplot(width=0.1) +
+    stat_compare_means(label.x = 0.70, label.y = NULL) + 
+    facet_wrap(~cell_type, scales="free_y", nrow=3) + 
+    # ggtitle("MCP-counter Abundance Scores with Tumour and Adjacent Samples") +
+    theme( strip.text = element_text(face="bold", size=12),
+           axis.text.x = element_blank(),
+           # Remove panel grid lines
+           panel.grid.major = element_blank(),
+           panel.grid.minor = element_blank(),
+           # Remove panel background
+           panel.background = element_blank(),
+           plot.title = element_text(color="black", size=14, face="bold.italic",hjust = 0.5))
+  
+  
+  return(list(mcp, violinp))
+}
+```
+
+
+# Running the custom functions to get results for each dataset
+```{r}
+data3.prep = prep(data3)
+data3.res = mcp.func(data3.prep,sample_info3)
+data3.res[[2]]
+
+data4.prep = prep(data4)
+data4.res = mcp.func(data4.prep,sample_info4)
+data4.res[[2]]
+
+
+data6.prep = prep(data6)
+data6.res = mcp.func(data6.prep,sample_info6)
+data6.res[[2]]
+```
